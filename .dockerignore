@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.git/
+.github/
+tests/
+data/raw/
+data/*.db-shm
+data/*.db-wal
+data/.freshness-*
+*.log
+*.md
+!README.md
+!COVERAGE.md
+!DISCLAIMER.md
+!PRIVACY.md
+!SECURITY.md
+!LICENSE

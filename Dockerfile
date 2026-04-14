@@ -21,12 +21,16 @@ COPY tsconfig.json ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 COPY sources.yml ./
+COPY server.json ./
 
 # Build TypeScript
 RUN npm run build
 
-# Seed the sample database so the container works out-of-the-box
-RUN mkdir -p data && node dist/scripts/seed-sample.js
+# Copy the pre-ingested database (produced by `npm run ingest:full` on the
+# developer's machine). Falling back to the seed script only if no real
+# database is present keeps the container deterministic across builds.
+COPY data/ ./data/
+RUN if [ ! -s data/sfda.db ]; then node dist/scripts/seed-sample.js; fi
 
 # Remove dev dependencies
 RUN npm prune --omit=dev
