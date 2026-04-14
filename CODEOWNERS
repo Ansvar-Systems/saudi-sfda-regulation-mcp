@@ -1,0 +1,8 @@
+# Code owners for saudi-sfda-regulation-mcp
+# Every PR requires a review from an Ansvar Systems maintainer.
+
+*                    @Ansvar-Systems/maintainers
+/src/                @Ansvar-Systems/maintainers
+/scripts/            @Ansvar-Systems/maintainers
+/.github/            @Ansvar-Systems/maintainers
+/data/coverage.json  @Ansvar-Systems/maintainers

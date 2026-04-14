@@ -1,0 +1,43 @@
+name: Semgrep SAST
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  semgrep:
+    name: Semgrep security scan
+    runs-on: ubuntu-latest
+
+    container:
+      image: semgrep/semgrep:1.79
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config p/default \
+            --config p/typescript \
+            --config p/security-audit \
+            --config p/owasp-top-ten \
+            --sarif \
+            --output=semgrep.sarif \
+            --metrics=off
+
+      - name: Upload SARIF to GitHub Security
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
