@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "mcp_name": "saudi-sfda-regulation-mcp",
+  "mcp_type": "regulatory_publications",
+  "jurisdiction": "SA",
+  "jurisdiction_name": "Saudi Arabia",
+  "authority": "Saudi Food and Drug Authority (SFDA)",
+  "portal": "https://sfda.gov.sa/en/regulations",
+  "census_date": "2026-04-14",
+  "agent": "claude-opus-4-6",
+  "summary": {
+    "total_rows": 152,
+    "frameworks": 40,
+    "controls": 40,
+    "circulars": 72,
+    "pdfs_ingested": 112,
+    "pdfs_metadata_only": 2
+  },
+  "sources": [
+    {
+      "id": "sfda-regulations-portal",
+      "name": "SFDA Laws and Regulations",
+      "portal_url": "https://sfda.gov.sa/en/regulations",
+      "document_count": 152,
+      "last_scraped": "2026-04-14",
+      "ingested_count": 150,
+      "access_method": "direct_http"
+    }
+  ],
+  "frameworks_by_domain": {
+    "Food": 12,
+    "Drugs": 14,
+    "Medical Devices": 2,
+    "Authority / General": 4,
+    "Feed": 4,
+    "Cosmetics": 2,
+    "General": 2
+  },
+  "frameworks": [
+    { "id": "sfda-sfda-mdsysexce", "name": "Implementing Regulation of the Law of Medical Devices", "domain": "Medical Devices", "effective_date": "2021-09-27", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-requirementsudi", "name": "Requirements for Unique Device Identification (UDI) for Medical Devices (MDS-REQ 7)", "domain": "Medical Devices", "effective_date": "2022-06-16", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-regulatoryframework", "name": "Regulatory Framework for Drugs Approval", "domain": "Drugs", "effective_date": "2024-06-25", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-sfda28122020ee", "name": "The Implementing Regulations of the Law of Pharmaceutical and Herbal Establishments and Products", "domain": "Drugs", "effective_date": "2020-12-28", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-d-grp", "name": "Good Regulatory Practice", "domain": "Drugs", "effective_date": "2022-10-27", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-druggmpbloodestablishments-ar", "name": "Good Manufacturing Practice for Blood Establishments", "domain": "Drugs", "effective_date": "2024-01-31", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-gsdp-e", "name": "Guideline of Good Storage and Distribution Practices (GSDP)", "domain": "Drugs", "effective_date": "2024-02-04", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-www-sfda-gov-sa-ar-drug-resources-doclib2-en", "name": "Guidance for the Storage and Transport of Time- and Temperature-Sensitive Pharmaceutical Products", "domain": "Drugs", "effective_date": "2019-01-08", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-guidelinesforinvestigationalnewdrug-ind-v11-en", "name": "Guidelines for Investigational New Drugs (IND) Requirements", "domain": "Drugs", "effective_date": "2019-01-05", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-pharmaceuticalpricingrulese", "name": "Pricing Rules for Pharmaceutical Products", "domain": "Drugs", "effective_date": "2022-08-24", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-narcoticdrugspsychotropicsubstances", "name": "Procedures and Controls for Narcotic Drugs and Psychotropic Substances", "domain": "Drugs", "effective_date": "2021-11-21", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-schedules-ksa", "name": "General Provisions for Schedules attached to The Law of Combating Narcotic Drugs and Psychotropic Substances", "domain": "Drugs", "effective_date": "2024-11-26", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-gcc-module-1-specifications-v1-5-en", "name": "GCC Module 1 Specifications", "domain": "Drugs", "effective_date": "2015-04-11", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-clearance-conditions-and-requirements", "name": "Clearance Conditions and Requirements", "domain": "Drugs", "effective_date": "2021-02-08", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-theimplemntingregulationsthechemicalsimportlaw", "name": "The Implementing Regulations of the Chemicals Import Law", "domain": "Drugs", "effective_date": "2021-10-01", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-registrationrulesv4e", "name": "The Registration Rules of Pharmaceutical, Herbal and Health Product Manufacturers and their Products Guideline", "domain": "Drugs", "effective_date": "2023-06-04", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-veterinaryproductsactregulationgcc", "name": "Veterinary Products Act and Regulation in GCC", "domain": "Drugs", "effective_date": "2015-09-15", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-lawfeede", "name": "Feed Act and Regulation", "domain": "Feed", "effective_date": "2019-09-05", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-sfdafeed465e", "name": "Feed Product Registration Guide", "domain": "Feed", "effective_date": "2020-04-30", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-technicalrequirementsfeedfactorieswarehouses", "name": "Technical Requirements for Feed Factories and Warehouses", "domain": "Feed", "effective_date": "2025-04-13", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda11321", "name": "Table of Violation Types and Penalties Prescribed in Accordance with the Feed Law and Implementing Regulations", "domain": "Feed", "effective_date": "2021-03-11", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-additivespermittedusefoodstuffs", "name": "Additives Permitted for Use in Food Stuffs", "domain": "Food", "effective_date": "2019-01-14", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-dioxin-en", "name": "Code of Practice for the Prevention and Reduction of Dioxin and Dioxin-like PCBs", "domain": "Food", "effective_date": "2019-01-14", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-sfdafood4654e", "name": "Conditions and Requirements for Importing Food to Saudi Arabia", "domain": "Food", "effective_date": "2022-03-17", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-conditionsrequirementsfoodclearancee", "name": "Conditions and Requirements for Food Clearance", "domain": "Food", "effective_date": "2023-11-20", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-contaminantstoxinse", "name": "Contaminants and Toxins in Food and Feed", "domain": "Food", "effective_date": "2019-02-07", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-foodhygienerequirementsen", "name": "Food Hygienic Requirements (Final Revision)", "domain": "Food", "effective_date": "2020-12-30", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-infantsformulaa", "name": "Infants Formula, Follow-on Formula and Formulas for Special Medical Purposes", "domain": "Food", "effective_date": "2019-01-14", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-pesticide-residues-agricultural-food-products", "name": "Maximum Limits of Pesticide Residues in Agricultural and Food Products", "domain": "Food", "effective_date": "2019-02-20", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-veterinarydrugs", "name": "Maximum Residues Limits (MRLs) of Veterinary Drugs in Food", "domain": "Food", "effective_date": "2019-01-14", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-rules-and-protocols-are-applied-in-food-facilities-in-cases-of-food-poisoning-or-suspected-cases", "name": "Rules and Protocols Applied in Food Facilities in Cases of Food Poisoning or Suspected Cases", "domain": "Food", "effective_date": "2025-06-22", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-rulesregulationsimportingmeate", "name": "Rules and Regulations for Importing Meat", "domain": "Food", "effective_date": "2020-03-31", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-implementing-regulations-of-food-law-en", "name": "Table of Violations and Penalties According to Implementing Regulations of Food Law", "domain": "Food", "effective_date": "2019-06-23", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-lawpestcidee", "name": "Pesticides Law System and its Implementing Regulation in the Gulf Cooperation Council", "domain": "General", "effective_date": "2019-06-29", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-guidancerequirementscosmeticproductnotification-compressed", "name": "Guidance of Regulations and Requirements for Cosmetic Products Notification", "domain": "Authority / General", "effective_date": "2020-08-20", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-implementing-regulation-of-cosmetic-products-law-1", "name": "Implementing Regulation of Cosmetic Products Law", "domain": "Authority / General", "effective_date": "2016-03-08", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-guidancereequirenetsdesignation", "name": "Guidance on the Requirements of Designation of Conformity Assessment Bodies (CAB)", "domain": "Authority / General", "effective_date": "2024-01-14", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-sfdahajj1447e", "name": "Requirements for Clearance of Medicines, Pharmaceutical Preparations, Medical Devices, Medical Supplies and Food Supplies for the Use of Pilgrims", "domain": "Authority / General", "effective_date": "2026-04-01", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-guidelineforlicensingprivatelaboratories", "name": "Guideline for Licensing Private Laboratories", "domain": "Cosmetics", "effective_date": "2019-09-09", "classification": "ingested", "ingested": true },
+    { "id": "sfda-sfda-quality-manual-2019-v", "name": "Quality Manual", "domain": "Cosmetics", "effective_date": "2021-12-15", "classification": "ingested", "ingested": true }
+  ],
+  "circulars_summary": {
+    "total": 72,
+    "by_category": {
+      "Food": 36,
+      "Drugs": 11,
+      "Medical Devices": 11,
+      "Authority / General": 7,
+      "Feed": 4,
+      "General": 3
+    }
+  },
+  "gaps": [
+    {
+      "topic": "Arabic full-text body content",
+      "reason": "Only Arabic titles are attached where PDF paths match; Arabic portal serves the same document set under a different path structure.",
+      "planned": true,
+      "target_version": "0.2.0"
+    },
+    {
+      "topic": "Per-provision (article/clause) extraction",
+      "reason": "Document-specific heuristics required; out of scope for initial ingest.",
+      "planned": true,
+      "target_version": "0.2.0"
+    },
+    {
+      "topic": "Two corrupt / mismatched upstream files",
+      "reason": "1 corrupt PDF, 1 DOCX served in a PDF slot. Rows retained with title + URL for discoverability.",
+      "planned": false
+    }
+  ]
+}

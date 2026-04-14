@@ -1,17 +1,18 @@
 {
   "schema_version": "1.0",
-  "mcp_name": "saudi-sfda-regulation-mcp",
-  "mcp_type": "compliance",
-  "coverage_type": "regulatory_publications",
+  "generatedAt": "2026-04-14T12:00:00.000Z",
+  "mcp": "saudi-sfda-regulation-mcp",
+  "mcp_type": "regulatory_publications",
+  "version": "0.1.0",
   "coverage_date": "2026-04-14",
-  "database_version": "0.1.0",
   "scope_statement": "Saudi Food and Drug Authority (SFDA) public medical device, food, drug, cosmetics, and feed regulations and guidance documents published on sfda.gov.sa.",
   "scope_exclusions": [
     "SFDA enforcement actions and warning letters (not published on the regulations portal)",
     "SFDA inspection reports (confidential)",
     "Draft guidance and public consultation papers (not yet in force)",
     "Arabic full-text body content (only Arabic titles are attached where PDF paths match)",
-    "Per-article provision extraction (documents are ingested as whole rows)"
+    "Per-article provision extraction (documents are ingested as whole rows)",
+    "SFDA fee schedules, tariff tables, and licence-application forms"
   ],
   "languages": ["en", "ar"],
   "language_primary": "en",
@@ -148,6 +149,5 @@
     "total_items": 152,
     "known_gaps": 5,
     "gaps_planned": 2
-  },
-  "generatedAt": "2026-04-14T07:00:00.000Z"
+  }
 }
