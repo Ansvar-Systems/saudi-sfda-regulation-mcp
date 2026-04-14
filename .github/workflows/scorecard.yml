@@ -1,10 +1,13 @@
 name: OSSF Scorecard
 
+# NOTE: This repo is currently INTERNAL (GitHub Enterprise). The OSSF
+# Scorecard action cannot score internal/private repos via ListCommits
+# ("Resource not accessible by integration"). The workflow is kept so it
+# activates automatically when the repo flips to public; meanwhile it is
+# reachable only via workflow_dispatch to avoid noisy push/schedule
+# failures.
+
 on:
-  schedule:
-    - cron: '0 2 * * 1'  # Monday 02:00 UTC
-  push:
-    branches: [main]
   workflow_dispatch:
 
 permissions: {}
