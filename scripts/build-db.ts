@@ -266,7 +266,23 @@ async function main(): Promise<void> {
     }
   }
 
-  db.pragma("journal_mode = WAL");
+  // Record build metadata so runtime tools (e.g. check_data_freshness) and
+  // audit scripts can read `data_age` without re-parsing coverage.json.
+  const nowIso = new Date().toISOString();
+  const metaInsert = db.prepare(
+    "INSERT OR REPLACE INTO db_metadata (key, value) VALUES (?, ?)",
+  );
+  metaInsert.run("built_at", nowIso);
+  metaInsert.run("source", "https://sfda.gov.sa/en/regulations");
+  metaInsert.run(
+    "mcp_name",
+    "Saudi SFDA MedTech Regulation MCP",
+  );
+  metaInsert.run("language_primary", "en");
+  metaInsert.run("languages", "en,ar");
+
+  // Keep journal_mode = DELETE for deployment compatibility (WAL files
+  // cannot be opened by read-only WASM SQLite). See mcp-golden-standard.md.
   db.pragma("vacuum");
 
   console.log(`

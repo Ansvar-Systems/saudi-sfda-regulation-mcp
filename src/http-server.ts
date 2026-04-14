@@ -30,6 +30,7 @@ import {
   getCircular,
   listFrameworks,
   getStats,
+  getDbMetadata,
 } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -50,9 +51,64 @@ try {
 
 let sourcesYml = "";
 try {
-  sourcesYml = readFileSync(join(__dirname, "..", "sources.yml"), "utf8");
+  sourcesYml = readFileSync(join(__dirname, "..", "..", "sources.yml"), "utf8");
 } catch {
-  // fallback
+  try {
+    sourcesYml = readFileSync(join(__dirname, "..", "sources.yml"), "utf8");
+  } catch {
+    // fallback
+  }
+}
+
+interface CoverageSource {
+  id?: string;
+  name: string;
+  url?: string;
+  last_refresh?: string;
+  last_fetched?: string;
+  refresh_frequency?: string;
+  update_frequency?: string;
+  item_count?: number;
+  status?: string;
+  expected_items?: number;
+  measurement_unit?: string;
+  last_verified?: string;
+  verification_method?: string;
+  completeness?: string;
+  completeness_note?: string;
+}
+
+interface CoverageManifest {
+  generatedAt?: string;
+  coverage_date?: string;
+  mcp?: string;
+  mcp_name?: string;
+  version?: string;
+  database_version?: string;
+  scope_statement?: string;
+  scope_exclusions?: string[];
+  languages?: string[];
+  language_primary?: string;
+  sources?: CoverageSource[];
+  gaps?: Array<{ id?: string; description: string; reason?: string; impact?: string; planned?: boolean; target_version?: string }>;
+  tools?: Array<{ name: string; category?: string; description?: string; data_sources?: string[]; verified?: boolean }>;
+  totals?: Record<string, number>;
+  summary?: Record<string, number>;
+}
+
+function loadCoverage(): CoverageManifest | null {
+  const candidates = [
+    join(__dirname, "..", "..", "data", "coverage.json"),
+    join(__dirname, "..", "data", "coverage.json"),
+  ];
+  for (const c of candidates) {
+    try {
+      return JSON.parse(readFileSync(c, "utf8")) as CoverageManifest;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
 }
 
 const DISCLAIMER =
@@ -183,6 +239,18 @@ const TOOLS = [
       required: [],
     },
   },
+  {
+    name: "sa_sfda_check_data_freshness",
+    description:
+      "Report data freshness: when the database was last built, when each source " +
+      "was last refreshed, expected refresh frequency, and whether any source is stale. " +
+      "Agents and users should call this to confirm data currency before relying on results.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // --- Zod schemas --------------------------------------------------------------
@@ -206,11 +274,30 @@ const SearchGuidanceArgs = z.object({
 
 // --- Helpers ------------------------------------------------------------------
 
+function getDataAge(): string {
+  try {
+    const meta = getDbMetadata();
+    const builtAt = meta["built_at"];
+    if (builtAt) {
+      return `Database built ${builtAt.split("T")[0]}`;
+    }
+  } catch {
+    /* fall through */
+  }
+  const cov = loadCoverage();
+  const firstSource = cov?.sources?.[0];
+  const last = firstSource?.last_refresh ?? firstSource?.last_fetched;
+  if (last) return `Source last refreshed ${last}`;
+  return "See data/coverage.json; refresh frequency: monthly";
+}
+
 function buildMeta(sourceUrl?: string): Record<string, unknown> {
   return {
     disclaimer: DISCLAIMER,
-    data_age: "See coverage.json; refresh frequency: monthly",
+    data_age: getDataAge(),
     source_url: sourceUrl ?? SOURCE_URL,
+    languages: ["en", "ar"],
+    language_primary: "en",
   };
 }
 
@@ -235,9 +322,21 @@ function createMcpServer(): Server {
       };
     }
 
-    function errorContent(message: string) {
+    function errorContent(
+      message: string,
+      errorType:
+        | "NO_MATCH"
+        | "INVALID_INPUT"
+        | "UNKNOWN_TOOL"
+        | "INTERNAL_ERROR" = "INTERNAL_ERROR",
+    ) {
+      const body = {
+        error: message,
+        _error_type: errorType,
+        _meta: buildMeta(),
+      };
       return {
-        content: [{ type: "text" as const, text: message }],
+        content: [{ type: "text" as const, text: JSON.stringify(body, null, 2) }],
         isError: true as const,
       };
     }
@@ -285,6 +384,7 @@ function createMcpServer(): Server {
           return errorContent(
             `No regulation or guidance document found with reference: ${docId}. ` +
               "Use sa_sfda_search_regulations to find available references.",
+            "NO_MATCH",
           );
         }
 
@@ -310,10 +410,10 @@ function createMcpServer(): Server {
             name: SERVER_NAME,
             version: pkgVersion,
             description:
-              "Saudi Food and Drug Authority (SFDA) MedTech Regulation MCP server. " +
-              "Provides structured access to SFDA medical device regulations, MDMA requirements, " +
-              "classification rules, SaMD guidance, and MedTech compliance documents for " +
-              "manufacturers and importers operating in Saudi Arabia.",
+              "Saudi Food and Drug Authority (SFDA) Regulation MCP server. " +
+              "Provides structured access to SFDA regulations and guidance across medical " +
+              "devices, drugs, food safety, cosmetics, and feed safety for manufacturers, " +
+              "importers, and compliance teams operating in Saudi Arabia.",
             data_source: "Saudi Food and Drug Authority (SFDA)",
             source_url: SOURCE_URL,
             coverage: {
@@ -321,7 +421,15 @@ function createMcpServer(): Server {
               requirements: `${stats.controls} regulatory requirements`,
               guidance_documents: `${stats.circulars} guidance and technical documents`,
               jurisdictions: ["Saudi Arabia"],
-              sectors: ["Medical Devices", "IVD", "SaMD", "Combination Products"],
+              sectors: [
+              "Medical Devices",
+              "IVD",
+              "SaMD",
+              "Drugs",
+              "Food Safety",
+              "Cosmetics",
+              "Feed Safety",
+            ],
             },
             tools: TOOLS.map((t) => ({ name: t.name, description: t.description })),
             _meta: buildMeta(),
@@ -329,19 +437,76 @@ function createMcpServer(): Server {
         }
 
         case "sa_sfda_list_sources": {
+          const cov = loadCoverage();
           return textContent({
             sources_yml: sourcesYml,
-            note: "Data is sourced from official SFDA public publications. See sources.yml for full provenance.",
+            sources: cov?.sources ?? [],
+            note: "Data is sourced from official SFDA public publications. See sources.yml and data/coverage.json for full provenance.",
+            _meta: buildMeta(),
+          });
+        }
+
+        case "sa_sfda_check_data_freshness": {
+          const cov = loadCoverage();
+          const dbMeta = (() => {
+            try {
+              return getDbMetadata();
+            } catch {
+              return {} as Record<string, string>;
+            }
+          })();
+          const builtAt = dbMeta["built_at"] ?? null;
+          const sources = (cov?.sources ?? []).map((s) => {
+            const last = s.last_refresh ?? s.last_fetched ?? null;
+            const freq = s.refresh_frequency ?? s.update_frequency ?? "unknown";
+            let stale: boolean | null = null;
+            let age_days: number | null = null;
+            if (last) {
+              const ageMs = Date.now() - new Date(last).getTime();
+              if (!Number.isNaN(ageMs)) {
+                age_days = Math.floor(ageMs / (1000 * 60 * 60 * 24));
+                const threshold =
+                  freq === "daily"
+                    ? 2
+                    : freq === "weekly"
+                      ? 14
+                      : freq === "monthly"
+                        ? 45
+                        : freq === "quarterly"
+                          ? 120
+                          : freq === "annual"
+                            ? 400
+                            : 90;
+                stale = age_days > threshold;
+              }
+            }
+            return {
+              name: s.name,
+              url: s.url ?? null,
+              last_refresh: last,
+              refresh_frequency: freq,
+              status: s.status ?? (stale ? "stale" : "current"),
+              age_days,
+              stale,
+            };
+          });
+          const anyStale = sources.some((s) => s.stale === true);
+          return textContent({
+            database_built_at: builtAt,
+            sources,
+            any_stale: anyStale,
             _meta: buildMeta(),
           });
         }
 
         default:
-          return errorContent(`Unknown tool: ${name}`);
+          return errorContent(`Unknown tool: ${name}`, "UNKNOWN_TOOL");
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return errorContent(`Error executing ${name}: ${message}`);
+      const errorType =
+        err instanceof z.ZodError ? "INVALID_INPUT" : "INTERNAL_ERROR";
+      return errorContent(`Error executing ${name}: ${message}`, errorType);
     }
   });
 

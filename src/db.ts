@@ -16,6 +16,11 @@ import { dirname } from "node:path";
 const DB_PATH = process.env["SFDA_DB_PATH"] ?? "data/sfda.db";
 
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS db_metadata (
+  key    TEXT PRIMARY KEY,
+  value  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS frameworks (
   id              TEXT    PRIMARY KEY,
   name            TEXT    NOT NULL,
@@ -158,8 +163,9 @@ export function getDb(): Database.Database {
     mkdirSync(dir, { recursive: true });
   }
 
-  _db = new Database(DB_PATH);
-  _db.pragma("journal_mode = WAL");
+  _db = new Database(DB_PATH, { readonly: false, fileMustExist: false });
+  // journal_mode stays at whatever was set during build (DELETE for a
+  // pre-ingested database, so read-only WASM SQLite can open it).
   _db.pragma("foreign_keys = ON");
   _db.exec(SCHEMA_SQL);
 
@@ -355,4 +361,16 @@ export function getStats(): DbStats {
   const controls = (db.prepare("SELECT COUNT(*) AS n FROM controls").get() as { n: number }).n;
   const circulars = (db.prepare("SELECT COUNT(*) AS n FROM circulars").get() as { n: number }).n;
   return { frameworks, controls, circulars };
+}
+
+// --- Database metadata --------------------------------------------------------
+
+export function getDbMetadata(): Record<string, string> {
+  const db = getDb();
+  const rows = db
+    .prepare("SELECT key, value FROM db_metadata")
+    .all() as { key: string; value: string }[];
+  const out: Record<string, string> = {};
+  for (const r of rows) out[r.key] = r.value;
+  return out;
 }

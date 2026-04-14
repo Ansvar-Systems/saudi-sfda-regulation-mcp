@@ -1,20 +1,153 @@
 {
-  "generatedAt": "2026-04-14T05:56:04.879Z",
-  "mcp": "saudi-sfda-regulation-mcp",
-  "version": "0.1.0",
+  "schema_version": "1.0",
+  "mcp_name": "saudi-sfda-regulation-mcp",
+  "mcp_type": "compliance",
+  "coverage_type": "regulatory_publications",
+  "coverage_date": "2026-04-14",
+  "database_version": "0.1.0",
+  "scope_statement": "Saudi Food and Drug Authority (SFDA) public medical device, food, drug, cosmetics, and feed regulations and guidance documents published on sfda.gov.sa.",
+  "scope_exclusions": [
+    "SFDA enforcement actions and warning letters (not published on the regulations portal)",
+    "SFDA inspection reports (confidential)",
+    "Draft guidance and public consultation papers (not yet in force)",
+    "Arabic full-text body content (only Arabic titles are attached where PDF paths match)",
+    "Per-article provision extraction (documents are ingested as whole rows)"
+  ],
+  "languages": ["en", "ar"],
+  "language_primary": "en",
+  "jurisdictions": ["Saudi Arabia"],
+  "sectors": [
+    "Medical Devices",
+    "IVD",
+    "SaMD",
+    "Food Safety",
+    "Drugs",
+    "Cosmetics",
+    "Feed Safety"
+  ],
   "sources": [
     {
+      "id": "sfda-regulations-portal",
       "name": "SFDA Laws and Regulations",
+      "authority": "Saudi Food and Drug Authority (SFDA)",
       "url": "https://sfda.gov.sa/en/regulations",
-      "last_fetched": "2026-01-11",
-      "update_frequency": "quarterly",
+      "version": "Current",
       "item_count": 152,
+      "expected_items": 152,
+      "item_type": "publication",
+      "measurement_unit": "rows (frameworks + controls + circulars)",
+      "last_fetched": "2026-04-14",
+      "last_refresh": "2026-04-14",
+      "last_verified": "2026-04-14",
+      "refresh_frequency": "monthly",
+      "update_frequency": "monthly",
+      "verification_method": "page_scraped",
+      "completeness": "partial",
+      "completeness_note": "English portal scraped across 13 paginated listings; 112 PDFs ingested, 2 kept as metadata-only due to corrupt or non-PDF upstream files.",
       "status": "current"
+    }
+  ],
+  "gaps": [
+    {
+      "id": "arabic-body-text",
+      "description": "Arabic full-text content of documents (only Arabic titles attached where PDF paths match)",
+      "reason": "Arabic portal serves the same document set under different path structure; unified ingestion deferred.",
+      "impact": "medium",
+      "planned": true,
+      "target_version": "0.2.0"
+    },
+    {
+      "id": "per-provision-extraction",
+      "description": "Provision-level (article/clause) extraction from each PDF",
+      "reason": "Document-specific heuristics required; out of scope for initial ingest.",
+      "impact": "medium",
+      "planned": true,
+      "target_version": "0.2.0"
+    },
+    {
+      "id": "enforcement-actions",
+      "description": "Enforcement actions and warning letters",
+      "reason": "Not published on the public regulations portal.",
+      "impact": "low",
+      "planned": false
+    },
+    {
+      "id": "draft-guidance",
+      "description": "Draft guidance and public consultation papers",
+      "reason": "Not yet in force; out of scope for a regulations MCP.",
+      "impact": "low",
+      "planned": false
+    },
+    {
+      "id": "two-corrupt-documents",
+      "description": "2 of 112 documents produced empty full_text (1 corrupt PDF, 1 DOCX served in PDF slot)",
+      "reason": "Upstream file quality; rows retained with title + URL for discoverability.",
+      "impact": "low",
+      "planned": false
+    }
+  ],
+  "tools": [
+    {
+      "name": "sa_sfda_search_regulations",
+      "category": "search",
+      "description": "Full-text search across SFDA regulations, requirements, and guidance documents.",
+      "data_sources": ["sfda-regulations-portal"],
+      "verified": true
+    },
+    {
+      "name": "sa_sfda_get_regulation",
+      "category": "lookup",
+      "description": "Get a specific regulation or guidance document by reference.",
+      "data_sources": ["sfda-regulations-portal"],
+      "verified": true
+    },
+    {
+      "name": "sa_sfda_search_guidance",
+      "category": "search",
+      "description": "Search SFDA guidance documents with framework/domain filters.",
+      "data_sources": ["sfda-regulations-portal"],
+      "verified": true
+    },
+    {
+      "name": "sa_sfda_list_frameworks",
+      "category": "lookup",
+      "description": "List all SFDA regulatory frameworks and guidance series.",
+      "data_sources": ["sfda-regulations-portal"],
+      "verified": true
+    },
+    {
+      "name": "sa_sfda_about",
+      "category": "meta",
+      "description": "Server metadata, version, coverage summary, and tool list.",
+      "data_sources": ["sfda-regulations-portal"],
+      "verified": true
+    },
+    {
+      "name": "sa_sfda_list_sources",
+      "category": "meta",
+      "description": "Data provenance: sources, retrieval method, update frequency, licensing.",
+      "data_sources": ["sfda-regulations-portal"],
+      "verified": true
+    },
+    {
+      "name": "sa_sfda_check_data_freshness",
+      "category": "meta",
+      "description": "Database build date and per-source staleness report.",
+      "data_sources": ["sfda-regulations-portal"],
+      "verified": true
     }
   ],
   "totals": {
     "frameworks": 40,
     "controls": 40,
     "circulars": 72
-  }
+  },
+  "summary": {
+    "total_tools": 7,
+    "total_sources": 1,
+    "total_items": 152,
+    "known_gaps": 5,
+    "gaps_planned": 2
+  },
+  "generatedAt": "2026-04-14T07:00:00.000Z"
 }
