@@ -15,3 +15,5 @@ data/.freshness-*
 !PRIVACY.md
 !SECURITY.md
 !LICENSE
+.env
+.env.*
