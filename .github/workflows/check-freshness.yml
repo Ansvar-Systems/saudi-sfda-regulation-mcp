@@ -1,0 +1,31 @@
+name: Freshness Check
+on:
+  schedule:
+    - cron: '0 8 * * *'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: npm ci
+      - name: Check freshness
+        id: freshness
+        run: |
+          npm run freshness:check
+          echo "stale=$(cat .freshness-stale)" >> $GITHUB_OUTPUT
+      - name: Create issue if stale
+        if: steps.freshness.outputs.stale == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const summary = require('fs').readFileSync('.freshness-report', 'utf8');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Data staleness alert - ${new Date().toISOString().split('T')[0]}`,
+              body: summary,
+              labels: ['data-freshness', 'automated']
+            });

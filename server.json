@@ -1,0 +1,11 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "sa.ansvar/saudi-sfda-regulation-mcp",
+  "description": "Query Saudi Food and Drug Authority (SFDA) medical device regulations, MDMA requirements, classification rules, SaMD guidance, and MedTech compliance documents",
+  "repository": { "url": "https://github.com/Ansvar-Systems/saudi-sfda-regulation-mcp", "source": "github" },
+  "homepage": "https://ansvar.eu",
+  "version": "0.1.0",
+  "license": "BSL-1.1",
+  "keywords": ["sfda", "medical-devices", "saudi-arabia", "medtech", "compliance", "mcp", "ansvar"],
+  "packages": [{ "registryType": "npm", "identifier": "@ansvar/saudi-sfda-regulation-mcp", "version": "0.1.0", "transport": { "type": "stdio" } }]
+}

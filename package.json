@@ -1,0 +1,48 @@
+{
+  "name": "@ansvar/saudi-sfda-regulation-mcp",
+  "version": "0.1.0",
+  "mcpName": "sa.ansvar/saudi-sfda-regulation-mcp",
+  "description": "Saudi Food and Drug Authority (SFDA) medical device regulations, MDMA requirements, and MedTech guidance",
+  "type": "module",
+  "main": "dist/src/index.js",
+  "bin": { "saudi-sfda-regulation-mcp": "dist/src/index.js" },
+  "files": ["dist", "server.json"],
+  "engines": { "node": ">=20" },
+  "repository": { "type": "git", "url": "git+https://github.com/Ansvar-Systems/saudi-sfda-regulation-mcp.git" },
+  "bugs": { "url": "https://github.com/Ansvar-Systems/saudi-sfda-regulation-mcp/issues" },
+  "homepage": "https://github.com/Ansvar-Systems/saudi-sfda-regulation-mcp#readme",
+  "keywords": ["mcp", "model-context-protocol", "ai", "claude", "sfda", "medical-devices", "saudi-arabia", "medtech", "compliance", "ansvar"],
+  "author": "Ansvar Systems AB <hello@ansvar.ai>",
+  "license": "BSL-1.1",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/http-server.ts",
+    "start": "node dist/src/http-server.js",
+    "seed": "npx tsx scripts/seed-sample.ts",
+    "ingest": "npx tsx scripts/ingest.ts",
+    "ingest:fetch": "npx tsx scripts/ingest-fetch.ts",
+    "ingest:diff": "npx tsx scripts/ingest-diff.ts",
+    "build:db": "npx tsx scripts/build-db.ts",
+    "coverage:update": "npx tsx scripts/update-coverage.ts",
+    "freshness:check": "npx tsx scripts/check-freshness.ts",
+    "ingest:full": "npm run ingest:fetch && npm run build:db && npm run coverage:update",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "test:contract": "vitest run --config vitest.contract.config.ts"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "better-sqlite3": "^9.4.3",
+    "cheerio": "^1.0.0",
+    "pdf-parse": "^1.1.1",
+    "zod": "^3.22.4"
+  }
+}

@@ -1,0 +1,23 @@
+schema_version: "1.0"
+mcp_name: "Saudi SFDA MedTech Regulation MCP"
+category: "regulation"
+
+sources:
+  - name: "SFDA Medical Device Regulations"
+    authority: "Saudi Food and Drug Authority (SFDA)"
+    official_portal: "https://sfda.gov.sa/en/regulations"
+    retrieval_method: "HTML_SCRAPE"
+    format: "PDF"
+    authentication: "none"
+    update_frequency: "monthly"
+    license:
+      type: "government_terms"
+      url: "https://sfda.gov.sa"
+      summary: "Public SFDA medical device regulations and guidance"
+    coverage:
+      scope: "Medical Device Interim Regulations; MDMA (Medical Device Marketing Authorization) Requirements; Medical Device Classification Rules; Software as a Medical Device (SaMD); Pharmacovigilance; In-vitro Diagnostics; Clinical Investigation"
+      version: "Current"
+      item_count: "~50-80 regulations and guidance documents"
+    languages:
+      - "en"
+      - "ar"
