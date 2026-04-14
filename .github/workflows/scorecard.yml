@@ -27,7 +27,9 @@ jobs:
           persist-credentials: false
 
       - name: Run OSSF Scorecard
-        uses: ossf/scorecard-action@v2
+        # Pin to v2.4.0 (released 2025-09); the short @v2 tag is no longer
+        # resolvable by actions.
+        uses: ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186 # v2.4.0
         with:
           results_file: results.sarif
           results_format: sarif
