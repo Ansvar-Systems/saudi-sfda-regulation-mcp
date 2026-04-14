@@ -1,12 +1,22 @@
 /**
  * SFDA Ingestion Fetcher
  *
- * Fetches the SFDA regulations portal, extracts medical device regulatory
- * PDF links, downloads the PDFs, and extracts text content for database ingestion.
+ * Fetches the SFDA regulations portal (Drupal-driven), paginates through all
+ * pages, extracts regulation metadata (title, date, category, PDF URL) for
+ * both English and Arabic locales, downloads the PDFs, and extracts text
+ * content for database ingestion.
+ *
+ * Portal structure (Drupal 10):
+ *   - Landing: https://sfda.gov.sa/en/regulations (page=0..12)
+ *   - Each regulation: <article class="warning-item"> containing
+ *       .news-date          — publication date
+ *       .inn.cat.<type>      — category class (medical|drugs|food|fodder|authority|cosmetics)
+ *       .m-c-title           — title (plain text)
+ *       a.download-doc-link  — link to the PDF under /sites/default/files/...
  *
  * Usage:
  *   npx tsx scripts/ingest-fetch.ts
- *   npx tsx scripts/ingest-fetch.ts --dry-run     # log what would be fetched
+ *   npx tsx scripts/ingest-fetch.ts --dry-run     # list what would be fetched
  *   npx tsx scripts/ingest-fetch.ts --force        # re-download existing files
  *   npx tsx scripts/ingest-fetch.ts --limit 5      # fetch only first N documents
  */
@@ -16,8 +26,6 @@ import {
   existsSync,
   mkdirSync,
   writeFileSync,
-  readFileSync,
-  createWriteStream,
 } from "node:fs";
 import { join, basename } from "node:path";
 
@@ -26,7 +34,8 @@ import { join, basename } from "node:path";
 // ---------------------------------------------------------------------------
 
 const BASE_URL = "https://sfda.gov.sa";
-const PORTAL_URL = `${BASE_URL}/en/regulations`;
+const PORTAL_PATH_EN = "/en/regulations";
+const PORTAL_PATH_AR = "/ar/regulations";
 const RAW_DIR = "data/raw";
 const RATE_LIMIT_MS = 2000;
 const MAX_RETRIES = 3;
@@ -34,26 +43,8 @@ const RETRY_BACKOFF_BASE_MS = 2000;
 const REQUEST_TIMEOUT_MS = 60_000;
 const USER_AGENT = "Ansvar-MCP/1.0 (regulatory-data-ingestion; https://ansvar.eu)";
 
-// Keywords to identify medical device regulatory documents
-const MEDDEV_KEYWORDS = [
-  "medical device",
-  "in-vitro",
-  "ivd",
-  "samd",
-  "software as a medical device",
-  "mdma",
-  "marketing authorization",
-  "registration",
-  "clinical investigation",
-  "post-market surveillance",
-  "pharmacovigilance",
-  "labeling",
-  "classification",
-  "combination product",
-  "implant",
-  "diagnostic",
-  "sfda",
-];
+// Safety cap so a broken pager never causes runaway pagination.
+const MAX_PAGES = 50;
 
 // CLI flags
 const args = process.argv.slice(2);
@@ -67,16 +58,25 @@ const fetchLimit = limitIdx !== -1 ? parseInt(args[limitIdx + 1] ?? "999", 10) :
 // ---------------------------------------------------------------------------
 
 interface DocumentLink {
-  title: string;
-  url: string;
+  title_en: string;
+  title_ar: string;
+  url: string; // absolute PDF URL
+  pdfPath: string; // portal path /sites/default/files/...
   category: string;
+  categorySlug: string; // medical|drugs|food|fodder|authority|cosmetics|general
+  publishedAt: string; // YYYY-MM-DD (best-effort)
   filename: string;
+  reference: string; // inferred reference (e.g., MDS-REQ10)
 }
 
 interface FetchedDocument {
-  title: string;
+  title_en: string;
+  title_ar: string;
   url: string;
   category: string;
+  categorySlug: string;
+  publishedAt: string;
+  reference: string;
   filename: string;
   text: string;
   fetchedAt: string;
@@ -131,7 +131,6 @@ async function fetchWithRetry(
 
 async function extractPdfText(pdfBuffer: Buffer): Promise<string> {
   try {
-    // Dynamic import to avoid top-level issues with pdf-parse
     const pdfParse = (await import("pdf-parse")).default;
     const data = await pdfParse(pdfBuffer);
     return data.text ?? "";
@@ -144,117 +143,189 @@ async function extractPdfText(pdfBuffer: Buffer): Promise<string> {
 }
 
 // ---------------------------------------------------------------------------
-// SFDA portal scraping
+// Portal scraping
 // ---------------------------------------------------------------------------
 
-function isMedDevRelevant(title: string): boolean {
-  const lower = title.toLowerCase();
-  return MEDDEV_KEYWORDS.some((kw) => lower.includes(kw));
+function extractCategorySlug($item: cheerio.Cheerio<any>): string {
+  // Look at the first "inn cat <slug>" class on the category chips.
+  const chip = $item.find(".custom-tags a.cat").first();
+  const cls = chip.attr("class") ?? "";
+  const match = cls.match(/\bcat\s+([a-zA-Z]+)/);
+  return match?.[1]?.toLowerCase() ?? "general";
 }
 
-async function scrapePortal(): Promise<DocumentLink[]> {
-  console.log(`Fetching SFDA portal: ${PORTAL_URL}`);
-  const response = await fetchWithRetry(PORTAL_URL);
+function categoryLabelForSlug(slug: string): string {
+  switch (slug) {
+    case "medical":
+      return "Medical Devices";
+    case "drugs":
+      return "Drugs";
+    case "food":
+      return "Food";
+    case "fodder":
+      return "Feed";
+    case "authority":
+      return "Authority / General";
+    case "cosmetics":
+      return "Cosmetics";
+    default:
+      return "General";
+  }
+}
+
+function inferReferenceFromTitle(title: string, filename: string): string {
+  // Extract codes like "MDS-REQ10", "MDS-REQ 12", "MDS-REQ 6"
+  const re = /\b(MDS[-\s]?REQ[-\s]?\d+[a-zA-Z]?|MDS[-\s]?G[-\s]?\d+|Drug[-\s]?\d+|SFDA[-\s]?[A-Z0-9-]+)\b/;
+  const m = title.match(re) ?? filename.match(re);
+  if (m) return m[0]!.replace(/\s+/g, "-").toUpperCase();
+  // Fall back to a slug derived from the filename stem (stripped of locale suffix).
+  const stem = filename.replace(/\.pdf$/i, "").replace(/_?\d+$/, "");
+  return `SFDA-${stem.replace(/[^A-Za-z0-9]+/g, "-").toUpperCase()}`;
+}
+
+async function parsePage(
+  locale: "en" | "ar",
+  page: number,
+): Promise<Map<string, Partial<DocumentLink>>> {
+  const url = `${BASE_URL}${locale === "en" ? PORTAL_PATH_EN : PORTAL_PATH_AR}?page=${page}`;
+  console.log(`  Fetching ${locale} page ${page + 1}: ${url}`);
+  const response = await fetchWithRetry(url);
   const html = await response.text();
   const $ = cheerio.load(html);
 
-  const links: DocumentLink[] = [];
+  const entries = new Map<string, Partial<DocumentLink>>();
 
-  // SFDA portal uses anchor tags with href pointing to PDFs
-  $("a[href]").each((_, el) => {
-    const href = $(el).attr("href") ?? "";
-    const title = $(el).text().trim();
+  $("article.warning-item").each((_, el) => {
+    const $item = $(el);
+    const title = $item.find(".m-c-title").first().text().trim();
+    const pdfHref = $item.find("a.download-doc-link").first().attr("href") ?? "";
+    const dateText = $item.find(".news-date").first().text().trim();
 
-    if (!href || !title) return;
-    if (!href.toLowerCase().endsWith(".pdf") && !href.includes("/regulations") && !href.includes("/guidance")) return;
-    if (!isMedDevRelevant(title)) return;
+    if (!title || !pdfHref) return;
 
-    const fullUrl = href.startsWith("http") ? href : `${BASE_URL}${href}`;
-    const filename = basename(href.split("?")[0] ?? href) || `sfda-doc-${links.length + 1}.pdf`;
+    const pdfPath = pdfHref.startsWith("http")
+      ? new URL(pdfHref).pathname + new URL(pdfHref).search
+      : pdfHref;
 
-    // Infer category from URL path or document title
-    let category = "General";
-    if (href.includes("pms") || title.toLowerCase().includes("post-market")) category = "Post-Market Surveillance";
-    else if (href.includes("samd") || title.toLowerCase().includes("software")) category = "SaMD";
-    else if (href.includes("ivd") || title.toLowerCase().includes("vitro")) category = "In-Vitro Diagnostics";
-    else if (href.includes("labeling") || title.toLowerCase().includes("label")) category = "Labeling";
-    else if (href.includes("classification")) category = "Classification";
-    else if (href.includes("clinical")) category = "Clinical Evidence";
-    else if (href.includes("cyber")) category = "Cybersecurity";
+    const key = pdfPath; // PDF path is our canonical dedup key across locales.
 
-    // Avoid duplicates
-    if (links.some((l) => l.url === fullUrl)) return;
-
-    links.push({ title, url: fullUrl, category, filename });
+    if (locale === "en") {
+      const categorySlug = extractCategorySlug($item);
+      const absoluteUrl = pdfHref.startsWith("http") ? pdfHref : `${BASE_URL}${pdfHref}`;
+      const filename = decodeURIComponent(basename(pdfPath.split("?")[0] ?? pdfPath));
+      entries.set(key, {
+        title_en: title,
+        url: absoluteUrl,
+        pdfPath,
+        category: categoryLabelForSlug(categorySlug),
+        categorySlug,
+        publishedAt: dateText || "",
+        filename,
+      });
+    } else {
+      entries.set(key, { title_ar: title });
+    }
   });
 
-  // If scraping yielded nothing (portal may require JS), log and return known documents
-  if (links.length === 0) {
-    console.warn("  Warning: No links found via scraping. Portal may require JavaScript.");
-    console.warn("  Falling back to known document list.");
-    return getKnownDocuments();
-  }
-
-  return links;
+  return entries;
 }
 
-function getKnownDocuments(): DocumentLink[] {
-  return [
-    {
-      title: "Medical Device Interim Regulations",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/medical-device-interim-regulations",
-      category: "Medical Device Registration",
-      filename: "sfda-medical-device-interim-regulations.pdf",
-    },
-    {
-      title: "Medical Device Marketing Authorization Requirements",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/marketing-authorization-requirements",
-      category: "Marketing Authorization",
-      filename: "sfda-mdma-requirements.pdf",
-    },
-    {
-      title: "Medical Device Classification Rules",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/classification-rules",
-      category: "Classification",
-      filename: "sfda-classification-rules.pdf",
-    },
-    {
-      title: "Guidance on Post-Market Surveillance for Medical Devices",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/guidance-pms-2021",
-      category: "Post-Market Surveillance",
-      filename: "sfda-guidance-pms-2021.pdf",
-    },
-    {
-      title: "Guidance on Software as a Medical Device (SaMD)",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/guidance-samd-2022",
-      category: "SaMD",
-      filename: "sfda-guidance-samd-2022.pdf",
-    },
-    {
-      title: "Guidance on Clinical Evaluation of Medical Devices",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/guidance-clinical-evaluation-2021",
-      category: "Clinical Evidence",
-      filename: "sfda-guidance-clinical-evaluation-2021.pdf",
-    },
-    {
-      title: "Guidance on In-Vitro Diagnostic Device Registration",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/guidance-ivd-2022",
-      category: "In-Vitro Diagnostics",
-      filename: "sfda-guidance-ivd-2022.pdf",
-    },
-    {
-      title: "Guidance on Medical Device Labeling Requirements",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/guidance-labeling-2020",
-      category: "Labeling",
-      filename: "sfda-guidance-labeling-2020.pdf",
-    },
-    {
-      title: "Guidance on Medical Device Cybersecurity",
-      url: "https://sfda.gov.sa/en/regulations/medical-devices/guidance-cybersecurity-2023",
-      category: "Cybersecurity",
-      filename: "sfda-guidance-cybersecurity-2023.pdf",
-    },
-  ];
+function detectLastPage(html: string): number {
+  const $ = cheerio.load(html);
+  const lastPager = $("li.pager__item--last a").first().attr("href") ?? "";
+  const m = lastPager.match(/[?&]page=(\d+)/);
+  if (m) return parseInt(m[1]!, 10);
+  // If no "last page" link, infer from the highest numbered pager item we can see.
+  let maxPage = 0;
+  $("li.pager__item a").each((_, el) => {
+    const href = $(el).attr("href") ?? "";
+    const mm = href.match(/[?&]page=(\d+)/);
+    if (mm) maxPage = Math.max(maxPage, parseInt(mm[1]!, 10));
+  });
+  return maxPage;
+}
+
+async function scrapePortal(): Promise<DocumentLink[]> {
+  // First, fetch the English landing page to discover total page count.
+  const landingUrl = `${BASE_URL}${PORTAL_PATH_EN}`;
+  console.log(`Discovering pagination at ${landingUrl}`);
+  const landingResp = await fetchWithRetry(landingUrl);
+  const landingHtml = await landingResp.text();
+  const lastPage = Math.min(detectLastPage(landingHtml), MAX_PAGES);
+  console.log(`  Detected ${lastPage + 1} pages to crawl (page=0..${lastPage})`);
+
+  // Gather English entries keyed by PDF path.
+  const merged = new Map<string, Partial<DocumentLink>>();
+
+  // Seed with landing page results.
+  const $0 = cheerio.load(landingHtml);
+  $0("article.warning-item").each((_, el) => {
+    const $item = $0(el);
+    const title = $item.find(".m-c-title").first().text().trim();
+    const pdfHref = $item.find("a.download-doc-link").first().attr("href") ?? "";
+    const dateText = $item.find(".news-date").first().text().trim();
+    if (!title || !pdfHref) return;
+    const pdfPath = pdfHref.startsWith("http")
+      ? new URL(pdfHref).pathname + new URL(pdfHref).search
+      : pdfHref;
+    const categorySlug = extractCategorySlug($item);
+    const absoluteUrl = pdfHref.startsWith("http") ? pdfHref : `${BASE_URL}${pdfHref}`;
+    const filename = decodeURIComponent(basename(pdfPath.split("?")[0] ?? pdfPath));
+    merged.set(pdfPath, {
+      title_en: title,
+      url: absoluteUrl,
+      pdfPath,
+      category: categoryLabelForSlug(categorySlug),
+      categorySlug,
+      publishedAt: dateText || "",
+      filename,
+    });
+  });
+
+  // Paginate through remaining English pages.
+  for (let p = 1; p <= lastPage; p++) {
+    await sleep(RATE_LIMIT_MS);
+    const pageEntries = await parsePage("en", p);
+    for (const [k, v] of pageEntries) merged.set(k, { ...(merged.get(k) ?? {}), ...v });
+  }
+
+  // Now enrich with Arabic titles across matching PDF paths. The Arabic portal
+  // serves different PDF URLs per locale, but medical-device PDFs often have an
+  // "E" English suffix and a separate Arabic file — we only merge when the path
+  // matches exactly. Non-matching Arabic entries are still captured separately.
+  for (let p = 0; p <= lastPage; p++) {
+    await sleep(RATE_LIMIT_MS);
+    const pageEntries = await parsePage("ar", p);
+    for (const [k, v] of pageEntries) {
+      if (merged.has(k)) {
+        merged.set(k, { ...(merged.get(k) ?? {}), ...v });
+      }
+      // Intentionally do NOT add AR-only entries as standalone — the English
+      // portal is the authoritative source for this MCP (bilingual policy
+      // prefers EN primary, AR secondary when available for the same doc).
+    }
+  }
+
+  // Finalise entries: require an English title + URL; fill in derived fields.
+  const result: DocumentLink[] = [];
+  for (const v of merged.values()) {
+    if (!v.title_en || !v.url || !v.pdfPath || !v.filename) continue;
+    const title = v.title_en;
+    const reference = inferReferenceFromTitle(title, v.filename);
+    result.push({
+      title_en: title,
+      title_ar: v.title_ar ?? "",
+      url: v.url,
+      pdfPath: v.pdfPath,
+      category: v.category ?? "General",
+      categorySlug: v.categorySlug ?? "general",
+      publishedAt: v.publishedAt ?? "",
+      filename: v.filename,
+      reference,
+    });
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,17 +339,26 @@ async function main(): Promise<void> {
   }
 
   let documents = await scrapePortal();
-  console.log(`Found ${documents.length} medical device regulatory documents`);
+  console.log(`\nDiscovered ${documents.length} regulations from SFDA portal`);
+
+  // Report breakdown by category.
+  const catCounts = new Map<string, number>();
+  for (const d of documents) catCounts.set(d.category, (catCounts.get(d.category) ?? 0) + 1);
+  for (const [cat, n] of [...catCounts.entries()].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${cat}: ${n}`);
+  }
 
   if (documents.length > fetchLimit) {
     documents = documents.slice(0, fetchLimit);
-    console.log(`Limiting to ${fetchLimit} documents`);
+    console.log(`\nLimiting to ${fetchLimit} documents`);
   }
 
   if (dryRun) {
     console.log("\n[DRY RUN] Would fetch:");
     for (const doc of documents) {
-      console.log(`  ${doc.title} → ${doc.filename}`);
+      console.log(
+        `  [${doc.categorySlug}] ${doc.title_en}\n    PDF: ${doc.url}${doc.title_ar ? `\n    AR:  ${doc.title_ar}` : ""}`,
+      );
     }
     return;
   }
@@ -292,12 +372,12 @@ async function main(): Promise<void> {
     const metaPath = join(RAW_DIR, `${doc.filename}.meta.json`);
 
     if (!force && existsSync(metaPath)) {
-      console.log(`[${i + 1}/${documents.length}] Skipping (exists): ${doc.title}`);
+      console.log(`[${i + 1}/${documents.length}] Skipping (exists): ${doc.title_en}`);
       skipped++;
       continue;
     }
 
-    console.log(`[${i + 1}/${documents.length}] Fetching: ${doc.title}`);
+    console.log(`[${i + 1}/${documents.length}] Fetching: ${doc.title_en}`);
     console.log(`  URL: ${doc.url}`);
 
     try {
@@ -305,15 +385,19 @@ async function main(): Promise<void> {
       const buffer = Buffer.from(await response.arrayBuffer());
 
       writeFileSync(destPath, buffer);
-      console.log(`  Downloaded: ${buffer.length.toLocaleString()} bytes → ${destPath}`);
+      console.log(`  Downloaded: ${buffer.length.toLocaleString()} bytes -> ${destPath}`);
 
       const text = await extractPdfText(buffer);
       console.log(`  Extracted text: ${text.length.toLocaleString()} chars`);
 
       const meta: FetchedDocument = {
-        title: doc.title,
+        title_en: doc.title_en,
+        title_ar: doc.title_ar,
         url: doc.url,
         category: doc.category,
+        categorySlug: doc.categorySlug,
+        publishedAt: doc.publishedAt,
+        reference: doc.reference,
         filename: doc.filename,
         text,
         fetchedAt: new Date().toISOString(),
@@ -327,7 +411,6 @@ async function main(): Promise<void> {
       );
     }
 
-    // Rate limit between requests
     if (i < documents.length - 1) {
       await sleep(RATE_LIMIT_MS);
     }
@@ -340,9 +423,12 @@ async function main(): Promise<void> {
     skipped,
     errors: documents.length - fetched.length - skipped,
     documents: fetched.map((d) => ({
-      title: d.title,
+      title_en: d.title_en,
+      title_ar: d.title_ar,
+      reference: d.reference,
       filename: d.filename,
       category: d.category,
+      publishedAt: d.publishedAt,
       textLength: d.text.length,
     })),
   };

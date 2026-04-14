@@ -1,8 +1,16 @@
 /**
- * Build the SAMA SQLite database from fetched raw data.
+ * Build the SFDA SQLite database from fetched raw data.
  *
- * Reads .meta.json files from data/raw/, parses the extracted text,
- * and inserts frameworks, controls, and circulars into the database.
+ * Reads .meta.json files written by ingest-fetch.ts (new SFDA shape with
+ * title_en / title_ar / reference / publishedAt / categorySlug), classifies
+ * each document, and inserts rows into frameworks or circulars.
+ *
+ * Classification:
+ *   - "framework": longer guidance / general regulatory framework documents
+ *     (e.g., general requirements, classification rules, guidance series).
+ *   - "circular":  specific requirement regulations (MDS-REQ*, Drug-*,
+ *     procedural rules) — matches the circulars table's "reference, title,
+ *     full_text" shape cleanly.
  *
  * Usage:
  *   npx tsx scripts/build-db.ts
@@ -25,7 +33,7 @@ import { SCHEMA_SQL } from "../src/db.js";
 // Configuration
 // ---------------------------------------------------------------------------
 
-const DB_PATH = process.env["SAMA_DB_PATH"] ?? "data/sama.db";
+const DB_PATH = process.env["SFDA_DB_PATH"] ?? "data/sfda.db";
 const RAW_DIR = "data/raw";
 
 const args = process.argv.slice(2);
@@ -37,126 +45,100 @@ const dryRun = args.includes("--dry-run");
 // ---------------------------------------------------------------------------
 
 interface FetchedDocument {
-  title: string;
+  title_en: string;
+  title_ar: string;
   url: string;
   category: string;
+  categorySlug: string;
+  publishedAt: string; // YYYY-MM-DD (from portal, may be "")
+  reference: string;
   filename: string;
   text: string;
   fetchedAt: string;
-}
-
-interface FrameworkRow {
-  id: string;
-  name: string;
-  version: string | null;
-  domain: string;
-  description: string;
-  control_count: number;
-  effective_date: string | null;
-  pdf_url: string;
-}
-
-interface ControlRow {
-  framework_id: string;
-  control_ref: string;
-  domain: string;
-  subdomain: string;
-  title: string;
-  description: string;
-  maturity_level: string;
-  priority: string;
-}
-
-interface CircularRow {
-  reference: string;
-  title: string;
-  date: string | null;
-  category: string;
-  summary: string;
-  full_text: string;
-  pdf_url: string;
-  status: string;
 }
 
 // ---------------------------------------------------------------------------
 // Document classification
 // ---------------------------------------------------------------------------
 
-function classifyDocument(doc: FetchedDocument): "framework" | "circular" | "unknown" {
-  const titleLower = doc.title.toLowerCase();
-  if (
-    titleLower.includes("framework") ||
-    titleLower.includes("standard") ||
-    titleLower.includes("guideline")
-  ) {
-    return "framework";
-  }
-  if (
-    titleLower.includes("circular") ||
-    titleLower.includes("regulation") ||
-    titleLower.includes("requirement")
-  ) {
+function classifyDocument(doc: FetchedDocument): "framework" | "circular" {
+  // References that look like numbered requirements go in circulars.
+  if (/\b(MDS[-\s]?REQ|MDS[-\s]?G|Drug[-\s]?\d)/i.test(doc.reference) || /\b(MDS[-\s]?REQ|MDS[-\s]?G|Drug[-\s]?\d)/i.test(doc.title_en)) {
     return "circular";
   }
-  // Default: treat longer framework documents as frameworks, shorter as circulars
-  return doc.text.length > 50_000 ? "framework" : "circular";
+  // Guidance / framework documents.
+  const t = doc.title_en.toLowerCase();
+  if (t.includes("framework") || t.includes("guidance") || t.includes("guideline") || t.includes("rules")) {
+    return "framework";
+  }
+  // Long documents -> framework, short -> circular.
+  return doc.text.length > 30_000 ? "framework" : "circular";
 }
 
 function inferFrameworkId(doc: FetchedDocument): string {
-  const fn = doc.filename.toLowerCase();
-  if (fn.includes("cybersecurity")) return "sama-csf";
-  if (fn.includes("bcm") || fn.includes("businesscontinuity")) return "sama-bcm";
-  if (fn.includes("tprm") || fn.includes("thirdparty")) return "sama-tprm";
-  return `sama-${doc.filename.replace(/\.pdf$/i, "").toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+  // Prefer extracted reference if already slug-ish.
+  const ref = doc.reference.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  if (ref) return `sfda-${ref}`;
+  const stem = doc.filename.replace(/\.pdf$/i, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  return `sfda-${stem}`;
 }
 
-function inferCircularReference(doc: FetchedDocument): string {
-  // Try to extract a SAMA circular reference from the text
-  const refMatch = doc.text.match(/SAMA[/-][A-Z]{2,6}[-/]\d{4}[-/][A-Z]{2,5}[-/]\d{3}/i);
-  if (refMatch) return refMatch[0]!.toUpperCase();
-
-  // Fall back to a reference derived from the filename and date
-  const year = new Date().getFullYear();
-  const base = doc.filename.replace(/\.pdf$/i, "").replace(/[^a-zA-Z0-9]/g, "-").substring(0, 30);
-  return `SAMA-CIR-${year}-${doc.category.substring(0, 3).toUpperCase()}-${base}`;
+function isoDate(s: string | undefined | null): string | null {
+  if (!s) return null;
+  const trimmed = s.trim();
+  // Accept "YYYY-MM-DD".
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  // Accept "DD Month YYYY".
+  const months: Record<string, string> = {
+    january: "01", february: "02", march: "03", april: "04",
+    may: "05", june: "06", july: "07", august: "08",
+    september: "09", october: "10", november: "11", december: "12",
+  };
+  const m = trimmed.match(/^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$/);
+  if (m) {
+    const month = months[m[2]!.toLowerCase()];
+    if (month) return `${m[3]}-${month}-${m[1]!.padStart(2, "0")}`;
+  }
+  return null;
 }
 
-function extractDate(text: string): string | null {
-  // Look for dates in common SAMA document formats
-  const patterns = [
+function extractDateFromText(text: string): string | null {
+  const patterns: RegExp[] = [
     /\b(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b/i,
     /\b(\d{4})-(\d{2})-(\d{2})\b/,
-    /\b(\d{2})\/(\d{2})\/(\d{4})\b/,
   ];
-
   for (const pattern of patterns) {
     const match = text.match(pattern);
-    if (match) {
-      if (match[2] && /[a-z]/i.test(match[2])) {
-        const months: Record<string, string> = {
-          january: "01", february: "02", march: "03", april: "04",
-          may: "05", june: "06", july: "07", august: "08",
-          september: "09", october: "10", november: "11", december: "12",
-        };
-        const month = months[match[2]!.toLowerCase()] ?? "01";
-        return `${match[3]}-${month}-${match[1]!.padStart(2, "0")}`;
-      }
-      return match[0]!;
+    if (!match) continue;
+    if (match[2] && /[a-z]/i.test(match[2])) {
+      const months: Record<string, string> = {
+        january: "01", february: "02", march: "03", april: "04",
+        may: "05", june: "06", july: "07", august: "08",
+        september: "09", october: "10", november: "11", december: "12",
+      };
+      const month = months[match[2]!.toLowerCase()] ?? "01";
+      return `${match[3]}-${month}-${match[1]!.padStart(2, "0")}`;
     }
+    if (/^\d{4}$/.test(match[1] ?? "")) return match[0]!;
   }
   return null;
 }
 
 function buildSummary(text: string, maxLen = 500): string {
-  // Extract first meaningful paragraph as summary
   const lines = text
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 50);
-  const firstParagraph = lines[0] ?? "";
-  return firstParagraph.length > maxLen
-    ? firstParagraph.substring(0, maxLen) + "..."
-    : firstParagraph;
+  const first = lines[0] ?? "";
+  return first.length > maxLen ? first.substring(0, maxLen) + "..." : first;
+}
+
+function displayTitle(doc: FetchedDocument): string {
+  // Primary title is English; append the Arabic title in parentheses if present.
+  if (doc.title_ar && doc.title_ar !== doc.title_en) {
+    return `${doc.title_en} | ${doc.title_ar}`;
+  }
+  return doc.title_en;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +152,6 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Collect all .meta.json files
   const metaFiles = readdirSync(RAW_DIR)
     .filter((f) => f.endsWith(".meta.json"))
     .sort();
@@ -186,12 +167,11 @@ async function main(): Promise<void> {
     for (const f of metaFiles) {
       const doc: FetchedDocument = JSON.parse(readFileSync(join(RAW_DIR, f), "utf8"));
       const type = classifyDocument(doc);
-      console.log(`  [${type}] ${doc.title} (${doc.text.length.toLocaleString()} chars)`);
+      console.log(`  [${type}] ${doc.title_en} (${doc.text.length.toLocaleString()} chars) [${doc.category}]`);
     }
     return;
   }
 
-  // Set up database
   const dir = dirname(DB_PATH);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   if (force && existsSync(DB_PATH)) {
@@ -200,7 +180,7 @@ async function main(): Promise<void> {
   }
 
   const db = new Database(DB_PATH);
-  db.pragma("journal_mode = DELETE"); // Use DELETE mode for build script (faster for bulk inserts)
+  db.pragma("journal_mode = DELETE");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA_SQL);
 
@@ -221,47 +201,61 @@ async function main(): Promise<void> {
   let frameworksInserted = 0;
   let controlsInserted = 0;
   let circularsInserted = 0;
+  const usedReferences = new Set<string>();
+
+  function uniqueReference(base: string): string {
+    let candidate = base;
+    let n = 2;
+    while (usedReferences.has(candidate)) {
+      candidate = `${base}-${n++}`;
+    }
+    usedReferences.add(candidate);
+    return candidate;
+  }
 
   for (const metaFile of metaFiles) {
     const doc: FetchedDocument = JSON.parse(readFileSync(join(RAW_DIR, metaFile), "utf8"));
     const type = classifyDocument(doc);
-    console.log(`Processing [${type}]: ${doc.title}`);
+    console.log(`Processing [${type}]: ${doc.title_en}`);
+
+    const date = isoDate(doc.publishedAt) ?? extractDateFromText(doc.text);
+    const title = displayTitle(doc);
 
     if (type === "framework") {
-      const frameworkId = inferFrameworkId(doc);
+      const frameworkId = uniqueReference(inferFrameworkId(doc));
       const result = insertFramework.run(
         frameworkId,
-        doc.title,
+        title,
         null,
         doc.category,
-        buildSummary(doc.text, 1000),
+        buildSummary(doc.text, 1000) || title,
         0,
-        extractDate(doc.text),
+        date,
         doc.url,
       );
       if (result.changes > 0) frameworksInserted++;
 
-      // For a real implementation, parse the PDF text to extract individual controls.
-      // The structure of SAMA PDFs varies; a production implementation would use
-      // heuristics specific to the SAMA CSF numbering scheme (e.g., "3.1.1", "3.1.2").
-      // Here we insert one placeholder control per framework document to demonstrate the flow.
+      // Seed one representative control entry so the framework is searchable
+      // via the controls FTS path. Real per-provision extraction requires
+      // document-specific heuristics and is out of scope for initial ingest.
+      const controlRef = uniqueReference(`${frameworkId.toUpperCase()}-GENERAL`);
       const controlResult = insertControl.run(
         frameworkId,
-        `${frameworkId.toUpperCase()}-AUTO-1`,
+        controlRef,
         doc.category,
         "General",
-        `${doc.title} — General Requirements`,
-        doc.text.substring(0, 2000) || "See full document for requirements.",
-        "Level 1",
-        "High",
+        `${doc.title_en} — General Requirements`,
+        doc.text.substring(0, 4000) || `See full document at ${doc.url}`,
+        null,
+        null,
       );
       if (controlResult.changes > 0) controlsInserted++;
-    } else if (type === "circular") {
-      const reference = inferCircularReference(doc);
+    } else {
+      const reference = uniqueReference(doc.reference || `SFDA-${doc.filename.replace(/\.pdf$/i, "").toUpperCase()}`);
       const result = insertCircular.run(
         reference,
-        doc.title,
-        extractDate(doc.text),
+        title,
+        date,
         doc.category,
         buildSummary(doc.text),
         doc.text || `See full document at: ${doc.url}`,
@@ -272,7 +266,6 @@ async function main(): Promise<void> {
     }
   }
 
-  // Switch to WAL for production use
   db.pragma("journal_mode = WAL");
   db.pragma("vacuum");
 
