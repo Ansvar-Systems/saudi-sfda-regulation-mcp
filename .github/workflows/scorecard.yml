@@ -28,12 +28,14 @@ jobs:
 
       - name: Run OSSF Scorecard
         # Pin to v2.4.0 (released 2025-09); the short @v2 tag is no longer
-        # resolvable by actions.
+        # resolvable by actions. publish_results is false for now because
+        # the org-level OpenSSF Scorecard app is not installed on this repo
+        # — SARIF is still uploaded to GitHub Security below.
         uses: ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186 # v2.4.0
         with:
           results_file: results.sarif
           results_format: sarif
-          publish_results: true
+          publish_results: false
 
       - name: Upload SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
