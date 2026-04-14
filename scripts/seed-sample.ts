@@ -22,9 +22,24 @@ if (force && existsSync(DB_PATH)) {
 }
 
 const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
+// Use DELETE so the seeded database is compatible with read-only WASM
+// SQLite deploys (see docs/guides/mcp-golden-standard.md §Known Pitfalls).
+db.pragma("journal_mode = DELETE");
 db.pragma("foreign_keys = ON");
 db.exec(SCHEMA_SQL);
+
+// Populate db_metadata so runtime freshness tooling works against a seeded DB.
+const nowIso = new Date().toISOString();
+const seedMeta = db.prepare(
+  "INSERT OR REPLACE INTO db_metadata (key, value) VALUES (?, ?)",
+);
+seedMeta.run("built_at", nowIso);
+seedMeta.run("source", "https://sfda.gov.sa/en/regulations");
+seedMeta.run("mcp_name", "Saudi SFDA Regulation MCP");
+seedMeta.run("language_primary", "en");
+seedMeta.run("languages", "en,ar");
+seedMeta.run("build_kind", "seed-sample");
+
 console.log(`Database initialised at ${DB_PATH}`);
 
 // --- Frameworks ---------------------------------------------------------------

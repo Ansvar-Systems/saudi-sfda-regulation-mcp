@@ -19,5 +19,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      - run: npm run seed
+      # Smoke tests run against the committed pre-ingested database in
+      # data/sfda.db (40 frameworks + 40 controls + 72 circulars,
+      # journal_mode=DELETE). Do NOT `npm run seed` here — that would
+      # overwrite the real database with a sample fixture and fail both
+      # row-count and journal_mode assertions.
       - run: npm test
